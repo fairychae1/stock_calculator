@@ -12,22 +12,21 @@ st.caption("Upload a screenshot from 愛利得 showing your 成交價金. The ap
 
 uploaded_file = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg"])
 
-auto_detected_numbers = []
+parsed_sold_items = []
 
 if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
-    with st.spinner("Scanning image via cloud OCR..."):
+    with st.spinner("Parsing table data from screenshot..."):
         try:
-            # Send image with explicit filename to prevent API parsing errors
             payload = {
                 'apikey': 'helloworld',
                 'language': 'cht',
                 'scale': 'true',
-                'isTable': 'true'
+                'isTable': 'true',
+                'OCREngine': '2'  # Engine 2 is optimized for numbers & tables
             }
             
-            # Extract file extension and bytes safely
             file_bytes = uploaded_file.getvalue()
             file_type = uploaded_file.type.split('/')[-1] if uploaded_file.type else 'png'
             files = {'file': (f'screenshot.{file_type}', file_bytes, uploaded_file.type)}
@@ -35,32 +34,43 @@ if uploaded_file is not None:
             response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
             result = response.json()
             
-            # Check if API returned parsed results safely
             if "ParsedResults" in result and result["ParsedResults"]:
                 parsed_text = result['ParsedResults'][0].get('ParsedText', '')
+                lines = parsed_text.split('\r\n')
                 
-                # Extract numerical values formatted like currency (e.g., 298,584 or 1,322,500)
-                raw_numbers = re.findall(r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,9}\b', parsed_text)
+                for line in lines:
+                    # Clean tab-separated table line
+                    tokens = [t.strip() for t in line.split('\t') if t.strip()]
+                    
+                    # Find all numbers with commas (e.g. 298,584 or 1,322,500) or large amounts
+                    amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
+                    tickers = re.findall(r'\b\d{4}\b', line)
+                    
+                    if amounts:
+                        # Convert highest comma-formatted number in line (which is 成交價金)
+                        clean_amt = float(amounts[-1].replace(',', ''))
+                        ticker_name = tickers[0] if tickers else ""
+                        parsed_sold_items.append({"name": ticker_name, "amount": clean_amt})
                 
-                for num_str in raw_numbers:
-                    clean_num = float(num_str.replace(',', ''))
-                    if clean_num > 100:  # Ignore small numbers like row indices
-                        auto_detected_numbers.append(clean_num)
-                        
-                if auto_detected_numbers:
-                    st.success(f"Successfully extracted {len(auto_detected_numbers)} amounts from image!")
+                if parsed_sold_items:
+                    st.success(f"Successfully matched {len(parsed_sold_items)} sold stock rows!")
                 else:
-                    st.warning("No currency figures detected. You can still input amounts manually below.")
+                    # Fallback for plain text scan
+                    raw_amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b', parsed_text)
+                    for amt in raw_amounts:
+                        parsed_sold_items.append({"name": "", "amount": float(amt.replace(',', ''))})
+                    if parsed_sold_items:
+                        st.success(f"Extracted {len(parsed_sold_items)} trade values!")
+                    else:
+                        st.warning("Could not automatically parse table columns. Please verify values below.")
             else:
-                error_msg = result.get("ErrorMessage", ["Unknown API response structure"])[0]
-                st.error(f"OCR API Error: {error_msg}. Please enter values manually below.")
-                
+                st.error("OCR server busy. You can input amounts manually below.")
         except Exception as e:
-            st.error(f"Unable to process image: {e}. Please enter values manually below.")
+            st.error(f"Scan error: {e}")
 
 st.write("---")
 
-# 2. Sold Stocks Section (Auto-Populated from OCR)
+# 2. Sold Stocks Section (Populated dynamically)
 st.header("Step 2: Sold Stocks Earnings (Up to 10 Stocks)")
 st.caption("Values below are automatically populated from the scanned image. Adjust manually if needed.")
 
@@ -69,19 +79,24 @@ col_left, col_right = st.columns(2)
 
 for i in range(1, 11):
     target_col = col_left if i <= 5 else col_right
-    default_val = auto_detected_numbers[i - 1] if (i - 1) < len(auto_detected_numbers) else 0.0
+    
+    # Retrieve parsed name and amount safely
+    item_data = parsed_sold_items[i - 1] if (i - 1) < len(parsed_sold_items) else {"name": "", "amount": 0.0}
+    
+    default_name = item_data["name"] if item_data["name"] else (f"Stock #{i}" if item_data["amount"] > 0 else "")
+    default_amt = float(item_data["amount"])
     
     with target_col:
         s_col1, s_col2 = st.columns([1, 2])
         with s_col1:
-            st.text_input(f"Sold #{i} Name", value=f"Stock {i}" if default_val > 0 else "", key=f"sold_name_{i}")
+            st.text_input(f"Sold #{i} Ticker/Name", value=default_name, key=f"sold_name_v2_{i}")
         with s_col2:
             amount = st.number_input(
-                f"Sold #{i} Amount (NTD)", 
+                f"Sold #{i} 成交價金 (NTD)", 
                 min_value=0.0, 
-                value=float(default_val), 
+                value=default_amt, 
                 step=1000.0, 
-                key=f"sold_amt_{i}"
+                key=f"sold_amt_v2_{i}"
             )
             sold_total += amount
 
