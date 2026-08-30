@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import re
-from PIL import Image
 
 # Page configuration
 st.set_page_config(page_title="Portfolio Budget Allocator", layout="wide", page_icon="📈")
@@ -16,39 +15,48 @@ uploaded_file = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg"
 auto_detected_numbers = []
 
 if uploaded_file is not None:
-    # Display preview
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
     with st.spinner("Scanning image via cloud OCR..."):
         try:
-            # Send image to free OCR API (supports Traditional Chinese: CHS/CHT)
+            # Send image with explicit filename to prevent API parsing errors
             payload = {
-                'apikey': 'helloworld',  # Free public API key
+                'apikey': 'helloworld',
                 'language': 'cht',
                 'scale': 'true',
                 'isTable': 'true'
             }
-            files = {'file': uploaded_file.getvalue()}
+            
+            # Extract file extension and bytes safely
+            file_bytes = uploaded_file.getvalue()
+            file_type = uploaded_file.type.split('/')[-1] if uploaded_file.type else 'png'
+            files = {'file': (f'screenshot.{file_type}', file_bytes, uploaded_file.type)}
+            
             response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
             result = response.json()
             
-            parsed_text = result['ParsedResults'][0]['ParsedText']
-            
-            # Extract large numbers (currency figures like 50,000 or 120000)
-            raw_numbers = re.findall(r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,9}\b', parsed_text)
-            
-            for num_str in raw_numbers:
-                clean_num = float(num_str.replace(',', ''))
-                if clean_num > 100:  # Filter out small non-currency integers
-                    auto_detected_numbers.append(clean_num)
-                    
-            if auto_detected_numbers:
-                st.success(f"Successfully extracted {len(auto_detected_numbers)} amounts from image!")
+            # Check if API returned parsed results safely
+            if "ParsedResults" in result and result["ParsedResults"]:
+                parsed_text = result['ParsedResults'][0].get('ParsedText', '')
+                
+                # Extract numerical values formatted like currency (e.g., 298,584 or 1,322,500)
+                raw_numbers = re.findall(r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,9}\b', parsed_text)
+                
+                for num_str in raw_numbers:
+                    clean_num = float(num_str.replace(',', ''))
+                    if clean_num > 100:  # Ignore small numbers like row indices
+                        auto_detected_numbers.append(clean_num)
+                        
+                if auto_detected_numbers:
+                    st.success(f"Successfully extracted {len(auto_detected_numbers)} amounts from image!")
+                else:
+                    st.warning("No currency figures detected. You can still input amounts manually below.")
             else:
-                st.warning("No large currency figures detected. You can still input amounts manually below.")
+                error_msg = result.get("ErrorMessage", ["Unknown API response structure"])[0]
+                st.error(f"OCR API Error: {error_msg}. Please enter values manually below.")
                 
         except Exception as e:
-            st.error(f"OCR scan error: {e}. Please input numbers manually below.")
+            st.error(f"Unable to process image: {e}. Please enter values manually below.")
 
 st.write("---")
 
@@ -61,8 +69,6 @@ col_left, col_right = st.columns(2)
 
 for i in range(1, 11):
     target_col = col_left if i <= 5 else col_right
-    
-    # Pre-fill amount from scanned image if detected
     default_val = auto_detected_numbers[i - 1] if (i - 1) < len(auto_detected_numbers) else 0.0
     
     with target_col:
