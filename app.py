@@ -4,11 +4,11 @@ import re
 
 # Page configuration
 st.set_page_config(page_title="Portfolio Budget Allocator", layout="wide", page_icon="📈")
-st.title("📈 Selective Stock Sales Allocator")
+st.title("📈 Auto-Scan & Rebalance Calculator")
 
 # 1. Screenshot OCR Auto-Extraction
 st.header("Step 1: Upload Sales Screenshot")
-st.caption("Upload a screenshot from 愛利得. The app will detect all sold stocks and let you select which ones to include.")
+st.caption("Upload a screenshot from 愛利得 showing 成交價金.")
 
 uploaded_file = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg"])
 
@@ -18,8 +18,8 @@ if "scanned_items" not in st.session_state:
 if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
-    if st.button("🔍 Scan & Extract Stocks from Screenshot", type="secondary"):
-        with st.spinner("Parsing table data from screenshot..."):
+    if st.button("🔍 Scan Screenshot & Populate Stocks", type="primary"):
+        with st.spinner("Extracting stock names and 成交價金 from image..."):
             try:
                 payload = {
                     'apikey': 'helloworld',
@@ -43,53 +43,52 @@ if uploaded_file is not None:
                     lines = parsed_text.split('\r\n')
                     
                     for line in lines:
-                        # Extract amounts formatted like currency (e.g., 298,584 or 1,322,500)
+                        # Extract currency-formatted numbers like 298,584 or 1,322,500
                         amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
                         tickers = re.findall(r'\b\d{4}\b', line)
                         
                         if amounts:
                             clean_amt = float(amounts[-1].replace(',', ''))
-                            ticker_name = tickers[0] if tickers else "Stock"
+                            ticker_name = tickers[0] if tickers else ""
                             extracted_list.append({"name": ticker_name, "amount": clean_amt})
                     
                     st.session_state["scanned_items"] = extracted_list
                     if extracted_list:
-                        st.success(f"Successfully detected {len(extracted_list)} stocks from image!")
+                        st.success(f"Successfully detected {len(extracted_list)} stocks with amounts!")
                     else:
-                        st.warning("No table rows detected. You can manually enter stocks below.")
+                        st.warning("Could not automatically parse rows. Please enter values manually below.")
                 else:
-                    st.error("OCR server busy. You can input amounts manually below.")
+                    st.error("OCR server busy. Please enter values manually below.")
             except Exception as e:
                 st.error(f"Scan error: {e}")
 
 st.write("---")
 
-# 2. Selective Sold Stocks Section
+# 2. Selectable Sold Stocks Section
 st.header("Step 2: Select Sold Stocks to Include in Budget")
-st.caption("Check the boxes for the stocks you sold today, or manually add custom values.")
+st.caption("Check the boxes for the stocks you sold today, or manually enter/edit names and amounts below.")
 
 sold_total = 0.0
 
 if st.session_state["scanned_items"]:
     st.subheader("📋 Detected Stocks from Screenshot")
     
-    # Create checkboxes for each detected stock
     for idx, item in enumerate(st.session_state["scanned_items"]):
         c1, c2, c3 = st.columns([1, 2, 3])
         with c1:
             use_stock = st.checkbox(f"Include #{idx+1}", value=True, key=f"chk_{idx}")
         with c2:
-            st.write(f"**Ticker/Name:** {item['name']}")
+            st.write(f"**Ticker/Name:** {item['name'] if item['name'] else 'Stock'}")
         with c3:
             st.write(f"**成交價金:** NT$ {item['amount']:,.0f}")
             
         if use_stock:
             sold_total += item["amount"]
 
-st.write("---")
+    st.write("---")
 
-# Manual Override / Additional Stocks
-with st.expander("➕ Manually Add or Adjust Sold Stocks"):
+# Manual Input Section (Pre-fills if image wasn't scanned)
+with st.expander("➕ Manually Input or Adjust Sold Stocks & Amounts", expanded=not bool(st.session_state["scanned_items"])):
     col_left, col_right = st.columns(2)
     manual_total = 0.0
     
@@ -98,9 +97,10 @@ with st.expander("➕ Manually Add or Adjust Sold Stocks"):
         with target_col:
             s1, s2 = st.columns([1, 2])
             with s1:
-                st.text_input(f"Manual #{i} Name", key=f"m_name_{i}")
+                st.text_input(f"Stock #{i} Name", key=f"m_name_v3_{i}")
             with s2:
-                amt = st.number_input(f"Manual #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_{i}")
+                # User enters the 成交價金 here
+                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_v3_{i}")
                 manual_total += amt
                 
     sold_total += manual_total
