@@ -11,7 +11,7 @@ st.set_page_config(page_title="Portfolio Rebalance & Multi-Account Stock Allocat
 tab1, tab2 = st.tabs(["📸 Sales Rebalance Allocator", "👥 Multi-Person Budget Calculator"])
 
 # ==============================================================================
-# TAB 1: SALES REBALANCE ALLOCATOR (MULTI-GROUP SUPPORT)
+# TAB 1: SALES REBALANCE ALLOCATOR (MULTI-GROUP SUPPORT - 6 BUY ROWS)
 # ==============================================================================
 with tab1:
     st.title("📈 Screenshot Auto-Scan & Multi-Group Rebalance Allocator")
@@ -31,6 +31,7 @@ with tab1:
         if st.button("🔍 Scan Screenshot & Populate Stocks", type="primary", key="btn_scan_t1"):
             with st.spinner("Cropping header and scanning table rows..."):
                 try:
+                    # Crop top 9% to remove summary headers and prevent false amount matches
                     img = Image.open(uploaded_file)
                     width, height = img.size
                     cropped_img = img.crop((0, int(height * 0.09), width, height))
@@ -97,9 +98,9 @@ with tab1:
             with target_col:
                 sm1, sm2 = st.columns([1, 2])
                 with sm1:
-                    m_code = st.text_input(f"Manual Stock #{i} Code", placeholder="e.g. 2376", key=f"m_code_v16_{i}")
+                    m_code = st.text_input(f"Manual Stock #{i} Code", placeholder="e.g. 2376", key=f"m_code_v17_{i}")
                 with sm2:
-                    m_amt = st.number_input(f"Manual Stock #{i} Trade Amount", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_v16_{i}")
+                    m_amt = st.number_input(f"Manual Stock #{i} Trade Amount", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_v17_{i}")
                     if m_amt > 0 and m_code:
                         if not any(x["number"] == m_code and x["amount"] == m_amt for x in st.session_state["scanned_items"]):
                             st.session_state["scanned_items"].append({"number": m_code, "amount": m_amt})
@@ -127,6 +128,7 @@ with tab1:
     for g in range(1, st.session_state["group_count"] + 1):
         st.markdown(f"### 📂 Funding Group #{g}")
         
+        # Select sold stocks for this group
         st.subheader(f"Group #{g}: Select Source Sold Stocks")
         g_sold_total = 0.0
         
@@ -139,7 +141,7 @@ with tab1:
                     use_item = st.checkbox(
                         f"Group #{g}: Include **{stock_code}** (NT$ {item['amount']:,.0f})", 
                         value=(g == 1),
-                        key=f"g{g}_chk_v16_{idx}"
+                        key=f"g{g}_chk_v17_{idx}"
                     )
                     if use_item:
                         g_sold_total += item["amount"]
@@ -148,22 +150,24 @@ with tab1:
 
         st.metric(f"Group #{g} Subtotal Proceeds", f"NT$ {g_sold_total:,.0f}")
 
-        g_pct = st.slider(f"Group #{g} Reinvestment Budget Percentage (%)", min_value=1, max_value=100, value=100, key=f"g{g}_pct_v16")
+        # Set reinvestment percentage for this group
+        g_pct = st.slider(f"Group #{g} Reinvestment Budget Percentage (%)", min_value=1, max_value=100, value=100, key=f"g{g}_pct_v17")
         g_reinvest_budget = g_sold_total * (g_pct / 100.0)
         st.info(f"Group #{g} Available Reinvestment Budget ({g_pct}%): **NT$ {g_reinvest_budget:,.0f}**")
 
-        st.write(f"**Group #{g}: Set Target Buy Stocks (Up to 4)**")
+        # Set target buys for this group (Up to 6 stocks)
+        st.write(f"**Group #{g}: Set Target Buy Stocks (Up to 6)**")
         g_buy_targets = []
         g_total_weight = 0.0
 
-        for b in range(1, 5):
+        for b in range(1, 7):
             b1, b2, b3 = st.columns([2, 2, 3])
             with b1:
-                b_code = st.text_input(f"Group #{g} Buy #{b} Code", placeholder="e.g. 2330", key=f"g{g}_b_code_v16_{b}")
+                b_code = st.text_input(f"Group #{g} Buy #{b} Code", placeholder="e.g. 2330", key=f"g{g}_b_code_v17_{b}")
             with b2:
-                b_price = st.number_input(f"Group #{g} Buy #{b} Set Price", min_value=0.0, value=0.0, step=0.5, key=f"g{g}_b_price_v16_{b}")
+                b_price = st.number_input(f"Group #{g} Buy #{b} Set Price", min_value=0.0, value=0.0, step=0.5, key=f"g{g}_b_price_v17_{b}")
             with b3:
-                b_weight = st.number_input(f"Group #{g} Buy #{b} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"g{g}_b_weight_v16_{b}")
+                b_weight = st.number_input(f"Group #{g} Buy #{b} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"g{g}_b_weight_v17_{b}")
 
             if b_price > 0 and b_weight > 0:
                 g_buy_targets.append({
@@ -186,7 +190,7 @@ with tab1:
         st.divider()
 
     # 3. Calculation Output
-    if st.button("Calculate All Groups Share Allocations", type="primary", key="btn_calc_all_groups_v16"):
+    if st.button("Calculate All Groups Share Allocations", type="primary", key="btn_calc_all_groups_v17"):
         st.subheader("📊 Purchase Plan Summary Across All Groups")
         
         has_error = False
@@ -209,11 +213,11 @@ with tab1:
                 if len(grp["targets"]) == 0:
                     st.caption("No target stocks entered for this group.")
                 else:
-                    res_cols = st.columns(min(len(grp["targets"]), 4))
+                    res_cols = st.columns(min(len(grp["targets"]), 6))
                     g_spent = 0.0
 
                     for idx, target in enumerate(grp["targets"]):
-                        col_target = res_cols[idx]
+                        col_target = res_cols[idx % len(res_cols)]
                         allocated_funds = g_budget * (target["weight"] / 100.0)
                         shares = int(allocated_funds // target["price"])
                         cost = shares * target["price"]
@@ -255,13 +259,13 @@ with tab2:
 
     col_r2, col_r3, col_r4, col_r5 = st.columns(4)
     with col_r2:
-        ratio_nainai = st.number_input("奶奶 Multiplier", min_value=0.0, max_value=5.0, value=0.266, step=0.001, format="%.4f", key="t2_r_nainai_v16")
+        ratio_nainai = st.number_input("奶奶 Multiplier", min_value=0.0, max_value=5.0, value=0.266, step=0.001, format="%.4f", key="t2_r_nainai_v17")
     with col_r3:
-        ratio_yipo = st.number_input("姨婆 Multiplier", min_value=0.0, max_value=5.0, value=0.150, step=0.001, format="%.4f", key="t2_r_yipo_v16")
+        ratio_yipo = st.number_input("姨婆 Multiplier", min_value=0.0, max_value=5.0, value=0.150, step=0.001, format="%.4f", key="t2_r_yipo_v17")
     with col_r4:
-        ratio_baba = st.number_input("爸爸 Multiplier", min_value=0.0, max_value=5.0, value=0.200, step=0.001, format="%.4f", key="t2_r_baba_v16")
+        ratio_baba = st.number_input("爸爸 Multiplier", min_value=0.0, max_value=5.0, value=0.200, step=0.001, format="%.4f", key="t2_r_baba_v17")
     with col_r5:
-        ratio_lina = st.number_input("Lina Multiplier", min_value=0.0, max_value=5.0, value=0.100, step=0.001, format="%.4f", key="t2_r_lina_v16")
+        ratio_lina = st.number_input("Lina Multiplier", min_value=0.0, max_value=5.0, value=0.100, step=0.001, format="%.4f", key="t2_r_lina_v17")
 
     st.write("---")
 
@@ -274,11 +278,11 @@ with tab2:
     for i in range(1, 11):
         c1, c2, c3 = st.columns([2, 2, 3])
         with c1:
-            stk_code = st.text_input(f"Stock #{i} Code/Name", placeholder="e.g. 2330", key=f"t2_code_v16_{i}")
+            stk_code = st.text_input(f"Stock #{i} Code/Name", placeholder="e.g. 2330", key=f"t2_code_v17_{i}")
         with c2:
-            stk_price = st.number_input(f"Stock #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"t2_price_v16_{i}")
+            stk_price = st.number_input(f"Stock #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"t2_price_v17_{i}")
         with c3:
-            stk_budget = st.number_input(f"Stock #{i} 舅舅 Budget (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"t2_budget_v16_{i}")
+            stk_budget = st.number_input(f"Stock #{i} 舅舅 Budget (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"t2_budget_v17_{i}")
 
         if stk_price > 0 and stk_budget > 0:
             stocks_to_buy.append({
@@ -291,7 +295,7 @@ with tab2:
     st.write("---")
 
     # 3. Execution & Output Table
-    if st.button("Calculate All People & Stock Shares", type="primary", key="btn_calc_t2_v16"):
+    if st.button("Calculate All People & Stock Shares", type="primary", key="btn_calc_t2_v17"):
         if len(stocks_to_buy) == 0:
             st.error("Please enter at least one stock with a price > 0 and 舅舅 budget > 0.")
         else:
