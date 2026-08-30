@@ -19,7 +19,7 @@ if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
     if st.button("🔍 Scan Screenshot & Populate Stocks", type="primary"):
-        with st.spinner("Extracting stock names and 成交價金 from image..."):
+        with st.spinner("Extracting stock numbers and 成交價金 from image..."):
             try:
                 payload = {
                     'apikey': 'helloworld',
@@ -45,12 +45,14 @@ if uploaded_file is not None:
                     for line in lines:
                         # Extract currency-formatted numbers like 298,584 or 1,322,500
                         amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
+                        # Extract 4-digit Taiwan stock codes (e.g., 2376, 3231, 6664)
                         tickers = re.findall(r'\b\d{4}\b', line)
                         
                         if amounts:
                             clean_amt = float(amounts[-1].replace(',', ''))
-                            ticker_name = tickers[0] if tickers else ""
-                            extracted_list.append({"name": ticker_name, "amount": clean_amt})
+                            # Use detected 4-digit stock number
+                            stock_num = tickers[0] if tickers else ""
+                            extracted_list.append({"number": stock_num, "amount": clean_amt})
                     
                     st.session_state["scanned_items"] = extracted_list
                     if extracted_list:
@@ -64,9 +66,9 @@ if uploaded_file is not None:
 
 st.write("---")
 
-# 2. Selectable Sold Stocks Section (Clean Stock Ticker Display)
+# 2. Selectable Sold Stocks Section
 st.header("Step 2: Select Sold Stocks to Include in Budget")
-st.caption("Check the boxes for the specific stocks you sold today.")
+st.caption("Check the boxes for the specific stock numbers you sold today.")
 
 sold_total = 0.0
 
@@ -74,13 +76,13 @@ if st.session_state["scanned_items"]:
     st.subheader("📋 Detected Stocks from Screenshot")
     
     for idx, item in enumerate(st.session_state["scanned_items"]):
-        stock_label = item['name'] if item['name'] else f"Stock Row #{idx+1}"
+        stock_code = item['number'] if item['number'] else f"Stock #{idx+1}"
         
-        # Checkbox labeled directly with Stock Code and Amount
+        # Displays "Include 2376 (NT$ 298,584)" instead of generic names
         use_stock = st.checkbox(
-            label=f"Include {stock_label} (NT$ {item['amount']:,.0f})", 
+            label=f"Include **{stock_code}** — NT$ {item['amount']:,.0f}", 
             value=True, 
-            key=f"chk_stock_{idx}"
+            key=f"chk_stock_num_{idx}"
         )
         
         if use_stock:
@@ -88,8 +90,8 @@ if st.session_state["scanned_items"]:
 
     st.write("---")
 
-# Manual Input Section (Pre-fills if image wasn't scanned)
-with st.expander("➕ Manually Input or Adjust Sold Stocks & Amounts", expanded=not bool(st.session_state["scanned_items"])):
+# Manual Override Section
+with st.expander("➕ Manually Input Stock Numbers & Amounts", expanded=not bool(st.session_state["scanned_items"])):
     col_left, col_right = st.columns(2)
     manual_total = 0.0
     
@@ -98,9 +100,9 @@ with st.expander("➕ Manually Input or Adjust Sold Stocks & Amounts", expanded=
         with target_col:
             s1, s2 = st.columns([1, 2])
             with s1:
-                st.text_input(f"Stock Code/Name #{i}", key=f"m_name_v5_{i}")
+                st.text_input(f"Stock Number #{i}", placeholder="e.g. 2376", key=f"m_num_{i}")
             with s2:
-                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_v5_{i}")
+                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_{i}")
                 manual_total += amt
                 
     sold_total += manual_total
@@ -121,7 +123,7 @@ st.write("---")
 
 # 4. Target Buy Allocation Section (Up to 6 Stocks)
 st.header("Step 4: Target Buy Allocation (Up to 6 Stocks)")
-st.caption("Enter up to 6 target stocks, their set buy price, and your budget allocation percentage.")
+st.caption("Enter up to 6 target stock numbers, set buy price, and budget allocation percentage.")
 
 buy_rows = []
 total_weight = 0.0
@@ -129,16 +131,16 @@ total_weight = 0.0
 for i in range(1, 7):
     b1, b2, b3 = st.columns([2, 2, 3])
     with b1:
-        b_name = st.text_input(f"Buy #{i} Code/Name", value=f"Target {i}" if i <= 2 else "", key=f"buy_name_{i}")
+        b_name = st.text_input(f"Target Stock Number #{i}", placeholder=f"e.g. 2330", key=f"buy_num_{i}")
     with b2:
-        b_price = st.number_input(f"Buy #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_{i}")
+        b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_{i}")
     with b3:
-        b_pct = st.number_input(f"Buy #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=50.0 if i <= 2 else 0.0, step=5.0, key=f"buy_pct_{i}")
+        b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_{i}")
     
     if b_price > 0 and b_pct > 0:
         buy_rows.append({
             "slot": i,
-            "name": b_name if b_name else f"Stock #{i}",
+            "name": b_name if b_name else f"Target #{i}",
             "price": b_price,
             "pct": b_pct
         })
@@ -175,7 +177,7 @@ if st.button("Calculate Share Allocations", type="primary"):
             grand_total_spent += cost
             
             with col_target:
-                st.markdown(f"### 🎯 {item['name']}")
+                st.markdown(f"### 🎯 Stock {item['name']}")
                 st.write(f"**Allocated Budget ({item['pct']}%):** NT$ {allocated_funds:,.0f}")
                 st.write(f"**Target Price:** NT$ {item['price']:,.2f}")
                 st.metric(label="Shares to Buy (零股)", value=f"{shares:,} 股")
