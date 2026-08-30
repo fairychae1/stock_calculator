@@ -11,7 +11,7 @@ st.set_page_config(page_title="Portfolio & Multi-Person Stock Allocator", layout
 tab1, tab2 = st.tabs(["📸 Sales Rebalance Allocator", "👥 Multi-Person Budget Calculator"])
 
 # ==============================================================================
-# TAB 1: SALES REBALANCE ALLOCATOR (EXISTING FEATURE)
+# TAB 1: SALES REBALANCE ALLOCATOR
 # ==============================================================================
 with tab1:
     st.title("📈 Auto-Scan & Rebalance Calculator")
@@ -102,7 +102,7 @@ with tab1:
             use_stock = st.checkbox(
                 label=f"Include Stock **{stock_code}** — NT$ {item['amount']:,.0f}", 
                 value=True, 
-                key=f"chk_stock_num_v8_{idx}"
+                key=f"chk_stock_num_v9_{idx}"
             )
             if use_stock:
                 sold_total += item["amount"]
@@ -116,9 +116,9 @@ with tab1:
             with target_col:
                 s1, s2 = st.columns([1, 2])
                 with s1:
-                    st.text_input(f"Stock Code/Name #{i}", placeholder="e.g. 2376", key=f"m_num_v8_{i}")
+                    st.text_input(f"Stock Code/Name #{i}", placeholder="e.g. 2376", key=f"m_num_v9_{i}")
                 with s2:
-                    amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_v8_{i}")
+                    amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_v9_{i}")
                     manual_total += amt
         sold_total += manual_total
 
@@ -127,7 +127,7 @@ with tab1:
 
     # 3. Overall Reinvestment Budget Allocation
     st.header("Step 3: Reinvestment Budget Allocation")
-    portfolio_pct = st.slider("Percentage of total sales earnings to reinvest (%)", min_value=1, max_value=100, value=100, key="slider_t1")
+    portfolio_pct = st.slider("Percentage of total sales earnings to reinvest (%)", min_value=1, max_value=100, value=100, key="slider_t1_v9")
     total_reinvest_budget = sold_total * (portfolio_pct / 100.0)
     st.info(f"Available Reinvestment Budget ({portfolio_pct}% of NT$ {sold_total:,.0f}): **NT$ {total_reinvest_budget:,.0f}**")
     st.write("---")
@@ -142,11 +142,11 @@ with tab1:
     for i in range(1, 7):
         b1, b2, b3 = st.columns([2, 2, 3])
         with b1:
-            b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_v8_{i}")
+            b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_v9_{i}")
         with b2:
-            b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_v8_{i}")
+            b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_v9_{i}")
         with b3:
-            b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_v8_{i}")
+            b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_v9_{i}")
         
         if b_price > 0 and b_pct > 0:
             buy_rows.append({
@@ -164,7 +164,7 @@ with tab1:
 
     st.write("---")
 
-    if st.button("Calculate Share Allocations", type="primary", key="btn_calc_t1"):
+    if st.button("Calculate Share Allocations", type="primary", key="btn_calc_t1_v9"):
         if total_reinvest_budget <= 0:
             st.error("Total reinvestment budget must be greater than zero.")
         elif len(buy_rows) == 0:
@@ -205,86 +205,88 @@ with tab1:
 
 
 # ==============================================================================
-# TAB 2: MULTI-PERSON BUDGET CALCULATOR (NEW FEATURE)
+# TAB 2: MULTI-PERSON MULTI-STOCK BUDGET CALCULATOR
 # ==============================================================================
 with tab2:
-    st.title("👥 Multi-Person Stock Purchase Allocator")
-    st.caption("Calculate share allocations for Person 1 (Primary Budget) and Persons 2–5 using daily ratio multipliers.")
+    st.title("👥 Multi-Person & Multi-Stock Purchase Allocator")
+    st.caption("Set up to 5 stocks with separate Person 1 budgets and prices, plus daily ratio multipliers for Persons 2–5.")
 
-    # 1. Stock & Primary Budget Input
-    st.header("Step 1: Target Stock & Primary Budget")
-    
-    col_t1, col_t2, col_t3 = st.columns(3)
-    with col_t1:
-        target_stock_t2 = st.text_input("Target Stock Code/Name", value="2330", key="t2_stock_code")
-    with col_t2:
-        p1_budget = st.number_input("Person 1 Allocated Budget (NTD)", min_value=100.0, value=30000.0, step=1000.0, key="t2_p1_budget")
-    with col_t3:
-        target_price_t2 = st.number_input("Set Stock Price (NTD)", min_value=0.1, value=950.0, step=0.5, key="t2_stock_price")
-
-    st.write("---")
-
-    # 2. Ratio Multipliers for Persons 2 to 5
-    st.header("Step 2: Person 2–5 Budget Ratio Multipliers")
-    st.caption("Enter the decimal multipliers for each person relative to Person 1's budget (e.g. 0.266 = 26.6% of Person 1).")
+    # 1. Daily Ratio Multipliers (Global across all stocks)
+    st.header("Step 1: Daily Ratio Multipliers for Persons 2–5")
+    st.caption("These ratios multiply Person 1's budget for each individual stock (e.g., 0.266 = 26.6% of Person 1).")
 
     col_r2, col_r3, col_r4, col_r5 = st.columns(4)
     with col_r2:
-        ratio_p2 = st.number_input("Person 2 Ratio", min_value=0.0, max_value=5.0, value=0.266, step=0.001, format="%.4f", key="t2_r2")
+        ratio_p2 = st.number_input("Person 2 Ratio", min_value=0.0, max_value=5.0, value=0.266, step=0.001, format="%.4f", key="t2_r2_v9")
     with col_r3:
-        ratio_p3 = st.number_input("Person 3 Ratio", min_value=0.0, max_value=5.0, value=0.150, step=0.001, format="%.4f", key="t2_r3")
+        ratio_p3 = st.number_input("Person 3 Ratio", min_value=0.0, max_value=5.0, value=0.150, step=0.001, format="%.4f", key="t2_r3_v9")
     with col_r4:
-        ratio_p4 = st.number_input("Person 4 Ratio", min_value=0.0, max_value=5.0, value=0.200, step=0.001, format="%.4f", key="t2_r4")
+        ratio_p4 = st.number_input("Person 4 Ratio", min_value=0.0, max_value=5.0, value=0.200, step=0.001, format="%.4f", key="t2_r4_v9")
     with col_r5:
-        ratio_p5 = st.number_input("Person 5 Ratio", min_value=0.0, max_value=5.0, value=0.100, step=0.001, format="%.4f", key="t2_r5")
+        ratio_p5 = st.number_input("Person 5 Ratio", min_value=0.0, max_value=5.0, value=0.100, step=0.001, format="%.4f", key="t2_r5_v9")
 
     st.write("---")
 
-    # 3. Execution & Allocation Table
-    if st.button("Calculate All People Shares", type="primary", key="btn_calc_t2"):
-        if target_price_t2 <= 0:
-            st.error("Stock price must be greater than zero.")
-        elif p1_budget <= 0:
-            st.error("Person 1 budget must be greater than zero.")
+    # 2. Multi-Stock Rows Input
+    st.header("Step 2: Enter Stocks, Individual Prices, and Person 1 Budgets")
+    st.caption("Fill in details for up to 5 stocks you wish to purchase today.")
+
+    stocks_to_buy = []
+
+    for i in range(1, 6):
+        c1, c2, c3 = st.columns([2, 2, 3])
+        with c1:
+            stk_code = st.text_input(f"Stock #{i} Code/Name", placeholder="e.g. 2330", key=f"t2_code_{i}")
+        with c2:
+            stk_price = st.number_input(f"Stock #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"t2_price_{i}")
+        with c3:
+            stk_budget = st.number_input(f"Stock #{i} Person 1 Budget (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"t2_budget_{i}")
+
+        if stk_price > 0 and stk_budget > 0:
+            stocks_to_buy.append({
+                "row": i,
+                "code": stk_code if stk_code else f"Stock #{i}",
+                "price": stk_price,
+                "p1_budget": stk_budget
+            })
+
+    st.write("---")
+
+    # 3. Execution & Multi-Person Output
+    if st.button("Calculate All Stock & People Shares", type="primary", key="btn_calc_t2_v9"):
+        if len(stocks_to_buy) == 0:
+            st.error("Please enter at least one stock with a price > 0 and Person 1 budget > 0.")
         else:
-            st.subheader(f"📊 Purchase Summary for Stock: {target_stock_t2} (@ NT$ {target_price_t2:,.2f})")
+            ratios = [1.0, ratio_p2, ratio_p3, ratio_p4, ratio_p5]
             
-            people_data = [
-                {"name": "Person 1 (Original)", "ratio": 1.0, "budget": p1_budget},
-                {"name": "Person 2", "ratio": ratio_p2, "budget": p1_budget * ratio_p2},
-                {"name": "Person 3", "ratio": ratio_p3, "budget": p1_budget * ratio_p3},
-                {"name": "Person 4", "ratio": ratio_p4, "budget": p1_budget * ratio_p4},
-                {"name": "Person 5", "ratio": ratio_p5, "budget": p1_budget * ratio_p5},
-            ]
-
-            p_cols = st.columns(5)
-            total_group_spent = 0.0
-            total_group_budget = 0.0
-
-            for idx, person in enumerate(people_data):
-                p_budget = person["budget"]
-                shares = int(p_budget // target_price_t2)
-                cost = shares * target_price_t2
-                leftover = p_budget - cost
+            for stk in stocks_to_buy:
+                st.subheader(f"📌 Stock {stk['code']} (@ NT$ {stk['price']:,.2f})")
                 
-                total_group_budget += p_budget
-                total_group_spent += cost
+                people_cols = st.columns(5)
+                stk_total_budget = 0.0
+                stk_total_spent = 0.0
 
-                with p_cols[idx]:
-                    st.markdown(f"### 👤 {person['name']}")
-                    st.caption(f"Multiplier: **{person['ratio']:.4f}x**")
-                    st.write(f"**Budget:** NT$ {p_budget:,.2f}")
-                    st.metric(label="Shares to Buy (零股)", value=f"{shares:,} 股")
-                    st.write(f"**Total Cost:** NT$ {cost:,.2f}")
-                    st.write(f"**Leftover Cash:** NT$ {leftover:,.2f}")
-                    st.divider()
+                for idx in range(5):
+                    person_num = idx + 1
+                    r = ratios[idx]
+                    p_budget = stk["p1_budget"] * r
+                    shares = int(p_budget // stk["price"])
+                    cost = shares * stk["price"]
+                    leftover = p_budget - cost
 
-            st.success("✅ Multi-Person Allocation Complete!")
-            
-            g1, g2, g3 = st.columns(3)
-            with g1:
-                st.metric("Combined Group Budget", f"NT$ {total_group_budget:,.2f}")
-            with g2:
-                st.metric("Combined Group Expenditure", f"NT$ {total_group_spent:,.2f}")
-            with g3:
-                st.metric("Combined Unused Cash", f"NT$ {total_group_budget - total_group_spent:,.2f}")
+                    stk_total_budget += p_budget
+                    stk_total_spent += cost
+
+                    with people_cols[idx]:
+                        label = f"Person {person_num}" + (" (Original)" if person_num == 1 else "")
+                        st.markdown(f"#### 👤 {label}")
+                        st.caption(f"Multiplier: **{r:.4f}x**")
+                        st.write(f"**Budget:** NT$ {p_budget:,.2f}")
+                        st.metric(label="Shares to Buy (零股)", value=f"{shares:,} 股")
+                        st.write(f"**Cost:** NT$ {cost:,.2f}")
+                        st.write(f"**Leftover:** NT$ {leftover:,.2f}")
+
+                st.caption(f"**Stock {stk['code']} Total Combined Budget:** NT$ {stk_total_budget:,.2f} | **Total Spent:** NT$ {stk_total_spent:,.2f}")
+                st.divider()
+
+            st.success("✅ Multi-Stock & Multi-Person Share Calculations Complete!")
