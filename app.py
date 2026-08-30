@@ -21,14 +21,12 @@ if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
     if st.button("🔍 Scan Screenshot & Populate Stocks", type="primary"):
-        with st.spinner("Cropping top header and scanning table rows..."):
+        with st.spinner("Cropping header and scanning table rows..."):
             try:
-                # Load image and crop top 8% to remove top summary bar (-1,092,277)
+                # Load image and crop top 9% to strictly remove the summary header bar
                 img = Image.open(uploaded_file)
                 width, height = img.size
-                
-                # Crop top 8% of image height
-                cropped_img = img.crop((0, int(height * 0.08), width, height))
+                cropped_img = img.crop((0, int(height * 0.09), width, height))
                 
                 # Save cropped image to memory buffer
                 img_byte_arr = io.BytesIO()
@@ -52,24 +50,35 @@ if uploaded_file is not None:
                 
                 if "ParsedResults" in result and result["ParsedResults"]:
                     parsed_text = result['ParsedResults'][0].get('ParsedText', '')
+                    
+                    # 1. Extract all 4-digit stock numbers in order across the entire text
+                    all_tickers = re.findall(r'\b[1-9]\d{3}\b', parsed_text)
+                    
                     lines = parsed_text.split('\r\n')
+                    ticker_idx = 0
                     
                     for line in lines:
-                        # Find currency-formatted numbers (e.g., 298,584 or 1,322,500)
+                        # Extract currency-formatted trade amounts (e.g. 298,584 or 1,322,500)
                         amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
-                        # Find 4-digit stock tickers (e.g., 2376, 2449, 3231)
-                        tickers = re.findall(r'\b[1-9]\d{3}\b', line)
                         
                         if amounts:
                             clean_amt = float(amounts[-1].replace(',', ''))
-                            stock_num = tickers[0] if tickers else ""
-                            # Only include valid trade row amounts
                             if clean_amt > 100:
+                                # Try to find ticker in line first; if not found, use global sequential ticker
+                                line_tickers = re.findall(r'\b[1-9]\d{3}\b', line)
+                                if line_tickers:
+                                    stock_num = line_tickers[0]
+                                elif ticker_idx < len(all_tickers):
+                                    stock_num = all_tickers[ticker_idx]
+                                    ticker_idx += 1
+                                else:
+                                    stock_num = ""
+                                    
                                 extracted_list.append({"number": stock_num, "amount": clean_amt})
                     
                     st.session_state["scanned_items"] = extracted_list
                     if extracted_list:
-                        st.success(f"Successfully aligned and extracted {len(extracted_list)} table rows!")
+                        st.success(f"Successfully extracted {len(extracted_list)} stocks with prices!")
                     else:
                         st.warning("Could not automatically parse rows. Please enter values manually below.")
                 else:
@@ -89,12 +98,12 @@ if st.session_state["scanned_items"]:
     st.subheader("📋 Detected Stocks from Screenshot")
     
     for idx, item in enumerate(st.session_state["scanned_items"]):
-        stock_code = item['number'] if item['number'] else f"Row #{idx+1}"
+        stock_code = item['number'] if item['number'] else f"{idx+1}"
         
         use_stock = st.checkbox(
             label=f"Include Stock **{stock_code}** — NT$ {item['amount']:,.0f}", 
             value=True, 
-            key=f"chk_stock_crop_{idx}"
+            key=f"chk_stock_num_v7_{idx}"
         )
         
         if use_stock:
@@ -112,9 +121,9 @@ with st.expander("➕ Manually Input Stock Numbers & Amounts", expanded=not bool
         with target_col:
             s1, s2 = st.columns([1, 2])
             with s1:
-                st.text_input(f"Stock Number #{i}", placeholder="e.g. 2376", key=f"m_num_crop_{i}")
+                st.text_input(f"Stock Code/Name #{i}", placeholder="e.g. 2376", key=f"m_num_v7_{i}")
             with s2:
-                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_crop_{i}")
+                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_v7_{i}")
                 manual_total += amt
                 
     sold_total += manual_total
@@ -143,11 +152,11 @@ total_weight = 0.0
 for i in range(1, 7):
     b1, b2, b3 = st.columns([2, 2, 3])
     with b1:
-        b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_crop_{i}")
+        b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_v7_{i}")
     with b2:
-        b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_crop_{i}")
+        b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_v7_{i}")
     with b3:
-        b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_crop_{i}")
+        b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_v7_{i}")
     
     if b_price > 0 and b_pct > 0:
         buy_rows.append({
