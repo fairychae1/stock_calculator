@@ -4,103 +4,108 @@ import re
 
 # Page configuration
 st.set_page_config(page_title="Portfolio Budget Allocator", layout="wide", page_icon="📈")
-st.title("📈 Auto-Scan Stock Sales Allocator")
+st.title("📈 Selective Stock Sales Allocator")
 
 # 1. Screenshot OCR Auto-Extraction
-st.header("Step 1: Upload Sales Screenshot (Auto-Scan)")
-st.caption("Upload a screenshot from 愛利得 showing your 成交價金. The app will extract amounts automatically.")
+st.header("Step 1: Upload Sales Screenshot")
+st.caption("Upload a screenshot from 愛利得. The app will detect all sold stocks and let you select which ones to include.")
 
 uploaded_file = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg"])
 
-parsed_sold_items = []
+if "scanned_items" not in st.session_state:
+    st.session_state["scanned_items"] = []
 
 if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
-    with st.spinner("Parsing table data from screenshot..."):
-        try:
-            payload = {
-                'apikey': 'helloworld',
-                'language': 'cht',
-                'scale': 'true',
-                'isTable': 'true',
-                'OCREngine': '2'  # Engine 2 is optimized for numbers & tables
-            }
-            
-            file_bytes = uploaded_file.getvalue()
-            file_type = uploaded_file.type.split('/')[-1] if uploaded_file.type else 'png'
-            files = {'file': (f'screenshot.{file_type}', file_bytes, uploaded_file.type)}
-            
-            response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
-            result = response.json()
-            
-            if "ParsedResults" in result and result["ParsedResults"]:
-                parsed_text = result['ParsedResults'][0].get('ParsedText', '')
-                lines = parsed_text.split('\r\n')
+    if st.button("🔍 Scan & Extract Stocks from Screenshot", type="secondary"):
+        with st.spinner("Parsing table data from screenshot..."):
+            try:
+                payload = {
+                    'apikey': 'helloworld',
+                    'language': 'cht',
+                    'scale': 'true',
+                    'isTable': 'true',
+                    'OCREngine': '2'
+                }
                 
-                for line in lines:
-                    # Clean tab-separated table line
-                    tokens = [t.strip() for t in line.split('\t') if t.strip()]
-                    
-                    # Find all numbers with commas (e.g. 298,584 or 1,322,500) or large amounts
-                    amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
-                    tickers = re.findall(r'\b\d{4}\b', line)
-                    
-                    if amounts:
-                        # Convert highest comma-formatted number in line (which is 成交價金)
-                        clean_amt = float(amounts[-1].replace(',', ''))
-                        ticker_name = tickers[0] if tickers else ""
-                        parsed_sold_items.append({"name": ticker_name, "amount": clean_amt})
+                file_bytes = uploaded_file.getvalue()
+                file_type = uploaded_file.type.split('/')[-1] if uploaded_file.type else 'png'
+                files = {'file': (f'screenshot.{file_type}', file_bytes, uploaded_file.type)}
                 
-                if parsed_sold_items:
-                    st.success(f"Successfully matched {len(parsed_sold_items)} sold stock rows!")
-                else:
-                    # Fallback for plain text scan
-                    raw_amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b', parsed_text)
-                    for amt in raw_amounts:
-                        parsed_sold_items.append({"name": "", "amount": float(amt.replace(',', ''))})
-                    if parsed_sold_items:
-                        st.success(f"Extracted {len(parsed_sold_items)} trade values!")
+                response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
+                result = response.json()
+                
+                extracted_list = []
+                
+                if "ParsedResults" in result and result["ParsedResults"]:
+                    parsed_text = result['ParsedResults'][0].get('ParsedText', '')
+                    lines = parsed_text.split('\r\n')
+                    
+                    for line in lines:
+                        # Extract amounts formatted like currency (e.g., 298,584 or 1,322,500)
+                        amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
+                        tickers = re.findall(r'\b\d{4}\b', line)
+                        
+                        if amounts:
+                            clean_amt = float(amounts[-1].replace(',', ''))
+                            ticker_name = tickers[0] if tickers else "Stock"
+                            extracted_list.append({"name": ticker_name, "amount": clean_amt})
+                    
+                    st.session_state["scanned_items"] = extracted_list
+                    if extracted_list:
+                        st.success(f"Successfully detected {len(extracted_list)} stocks from image!")
                     else:
-                        st.warning("Could not automatically parse table columns. Please verify values below.")
-            else:
-                st.error("OCR server busy. You can input amounts manually below.")
-        except Exception as e:
-            st.error(f"Scan error: {e}")
+                        st.warning("No table rows detected. You can manually enter stocks below.")
+                else:
+                    st.error("OCR server busy. You can input amounts manually below.")
+            except Exception as e:
+                st.error(f"Scan error: {e}")
 
 st.write("---")
 
-# 2. Sold Stocks Section (Populated dynamically)
-st.header("Step 2: Sold Stocks Earnings (Up to 10 Stocks)")
-st.caption("Values below are automatically populated from the scanned image. Adjust manually if needed.")
+# 2. Selective Sold Stocks Section
+st.header("Step 2: Select Sold Stocks to Include in Budget")
+st.caption("Check the boxes for the stocks you sold today, or manually add custom values.")
 
 sold_total = 0.0
-col_left, col_right = st.columns(2)
 
-for i in range(1, 11):
-    target_col = col_left if i <= 5 else col_right
+if st.session_state["scanned_items"]:
+    st.subheader("📋 Detected Stocks from Screenshot")
     
-    # Retrieve parsed name and amount safely
-    item_data = parsed_sold_items[i - 1] if (i - 1) < len(parsed_sold_items) else {"name": "", "amount": 0.0}
-    
-    default_name = item_data["name"] if item_data["name"] else (f"Stock #{i}" if item_data["amount"] > 0 else "")
-    default_amt = float(item_data["amount"])
-    
-    with target_col:
-        s_col1, s_col2 = st.columns([1, 2])
-        with s_col1:
-            st.text_input(f"Sold #{i} Ticker/Name", value=default_name, key=f"sold_name_v2_{i}")
-        with s_col2:
-            amount = st.number_input(
-                f"Sold #{i} 成交價金 (NTD)", 
-                min_value=0.0, 
-                value=default_amt, 
-                step=1000.0, 
-                key=f"sold_amt_v2_{i}"
-            )
-            sold_total += amount
+    # Create checkboxes for each detected stock
+    for idx, item in enumerate(st.session_state["scanned_items"]):
+        c1, c2, c3 = st.columns([1, 2, 3])
+        with c1:
+            use_stock = st.checkbox(f"Include #{idx+1}", value=True, key=f"chk_{idx}")
+        with c2:
+            st.write(f"**Ticker/Name:** {item['name']}")
+        with c3:
+            st.write(f"**成交價金:** NT$ {item['amount']:,.0f}")
+            
+        if use_stock:
+            sold_total += item["amount"]
 
-st.metric(label="Total Sales Earnings (Sum of Sold Stocks)", value=f"NT$ {sold_total:,.0f}")
+st.write("---")
+
+# Manual Override / Additional Stocks
+with st.expander("➕ Manually Add or Adjust Sold Stocks"):
+    col_left, col_right = st.columns(2)
+    manual_total = 0.0
+    
+    for i in range(1, 11):
+        target_col = col_left if i <= 5 else col_right
+        with target_col:
+            s1, s2 = st.columns([1, 2])
+            with s1:
+                st.text_input(f"Manual #{i} Name", key=f"m_name_{i}")
+            with s2:
+                amt = st.number_input(f"Manual #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_{i}")
+                manual_total += amt
+                
+    sold_total += manual_total
+
+st.metric(label="Total Selected Sales Earnings (Proceeds Budget)", value=f"NT$ {sold_total:,.0f}")
 
 st.write("---")
 
