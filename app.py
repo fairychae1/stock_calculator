@@ -1,38 +1,85 @@
 import streamlit as st
+import requests
+import re
+from PIL import Image
 
 # Page configuration
 st.set_page_config(page_title="Portfolio Budget Allocator", layout="wide", page_icon="📈")
-st.title("📈 Multi-Stock Rebalancing Calculator")
+st.title("📈 Auto-Scan Stock Sales Allocator")
 
-# 1. Screenshot Reference Section
-st.header("Step 1: Sales Screenshot Reference (Optional)")
-uploaded_file = st.file_uploader("Upload screenshot from 愛利得 for quick reference", type=["png", "jpg", "jpeg"])
+# 1. Screenshot OCR Auto-Extraction
+st.header("Step 1: Upload Sales Screenshot (Auto-Scan)")
+st.caption("Upload a screenshot from 愛利得 showing your 成交價金. The app will extract amounts automatically.")
+
+uploaded_file = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg"])
+
+auto_detected_numbers = []
 
 if uploaded_file is not None:
-    st.image(uploaded_file, caption="Sales Screenshot Reference", width=600)
+    # Display preview
+    st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
+    
+    with st.spinner("Scanning image via cloud OCR..."):
+        try:
+            # Send image to free OCR API (supports Traditional Chinese: CHS/CHT)
+            payload = {
+                'apikey': 'helloworld',  # Free public API key
+                'language': 'cht',
+                'scale': 'true',
+                'isTable': 'true'
+            }
+            files = {'file': uploaded_file.getvalue()}
+            response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
+            result = response.json()
+            
+            parsed_text = result['ParsedResults'][0]['ParsedText']
+            
+            # Extract large numbers (currency figures like 50,000 or 120000)
+            raw_numbers = re.findall(r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{4,9}\b', parsed_text)
+            
+            for num_str in raw_numbers:
+                clean_num = float(num_str.replace(',', ''))
+                if clean_num > 100:  # Filter out small non-currency integers
+                    auto_detected_numbers.append(clean_num)
+                    
+            if auto_detected_numbers:
+                st.success(f"Successfully extracted {len(auto_detected_numbers)} amounts from image!")
+            else:
+                st.warning("No large currency figures detected. You can still input amounts manually below.")
+                
+        except Exception as e:
+            st.error(f"OCR scan error: {e}. Please input numbers manually below.")
 
 st.write("---")
 
-# 2. Sold Stocks Input Section (Up to 10 Stocks)
+# 2. Sold Stocks Section (Auto-Populated from OCR)
 st.header("Step 2: Sold Stocks Earnings (Up to 10 Stocks)")
-st.caption("Enter the ticker/name and 成交價金 for up to 10 stocks you sold.")
+st.caption("Values below are automatically populated from the scanned image. Adjust manually if needed.")
 
 sold_total = 0.0
-
-# Create 2 columns of 5 input slots each for a clean grid layout
 col_left, col_right = st.columns(2)
 
 for i in range(1, 11):
     target_col = col_left if i <= 5 else col_right
+    
+    # Pre-fill amount from scanned image if detected
+    default_val = auto_detected_numbers[i - 1] if (i - 1) < len(auto_detected_numbers) else 0.0
+    
     with target_col:
         s_col1, s_col2 = st.columns([1, 2])
         with s_col1:
-            st.text_input(f"Sold #{i} Name", value=f"Stock {i}" if i <= 2 else "", key=f"sold_name_{i}")
+            st.text_input(f"Sold #{i} Name", value=f"Stock {i}" if default_val > 0 else "", key=f"sold_name_{i}")
         with s_col2:
-            amount = st.number_input(f"Sold #{i} Amount (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"sold_amt_{i}")
+            amount = st.number_input(
+                f"Sold #{i} Amount (NTD)", 
+                min_value=0.0, 
+                value=float(default_val), 
+                step=1000.0, 
+                key=f"sold_amt_{i}"
+            )
             sold_total += amount
 
-st.metric(label="Total Earnings from Sales (Sum of Sold Stocks)", value=f"NT$ {sold_total:,.0f}")
+st.metric(label="Total Sales Earnings (Sum of Sold Stocks)", value=f"NT$ {sold_total:,.0f}")
 
 st.write("---")
 
@@ -48,12 +95,11 @@ st.write("---")
 
 # 4. Target Buy Allocation Section (Up to 6 Stocks)
 st.header("Step 4: Target Buy Allocation (Up to 6 Stocks)")
-st.caption("Enter up to 6 target stocks, their set buy price, and the share of your reinvestment budget to allocate to each.")
+st.caption("Enter up to 6 target stocks, their set buy price, and your budget allocation percentage.")
 
 buy_rows = []
 total_weight = 0.0
 
-# Layout as 6 rows
 for i in range(1, 7):
     b1, b2, b3 = st.columns([2, 2, 3])
     with b1:
@@ -72,28 +118,25 @@ for i in range(1, 7):
         })
         total_weight += b_pct
 
-# Allocation Percentage Warnings
 if total_weight > 100.0:
-    st.error(f"⚠️ Total target allocation adds up to {total_weight:.1f}%, which exceeds 100%! Please reduce allocations.")
+    st.error(f"⚠️ Total target allocation is {total_weight:.1f}%, which exceeds 100%!")
 elif total_weight < 100.0 and len(buy_rows) > 0:
-    st.warning(f"ℹ️ Total target allocation adds up to {total_weight:.1f}%. Unallocated budget: {100.0 - total_weight:.1f}%")
+    st.warning(f"ℹ️ Total target allocation is {total_weight:.1f}%. Unallocated budget: {100.0 - total_weight:.1f}%")
 
 st.write("---")
 
-# 5. Calculation Results
+# 5. Output Results
 if st.button("Calculate Share Allocations", type="primary"):
     if total_reinvest_budget <= 0:
-        st.error("Total reinvestment budget must be greater than zero. Please enter sold stock amounts.")
+        st.error("Total reinvestment budget must be greater than zero.")
     elif len(buy_rows) == 0:
         st.error("Please enter at least one target stock with a price > 0 and allocation % > 0.")
     elif total_weight > 100.0:
-        st.error("Cannot calculate while allocation total exceeds 100%.")
+        st.error("Cannot calculate while total allocation exceeds 100%.")
     else:
         st.subheader("📊 Purchase Plan Summary")
         
         grand_total_spent = 0.0
-        
-        # Display results in structured grid columns
         res_cols = st.columns(min(len(buy_rows), 3))
         
         for index, item in enumerate(buy_rows):
