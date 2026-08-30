@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import re
+from PIL import Image
+import io
 
 # Page configuration
 st.set_page_config(page_title="Portfolio Budget Allocator", layout="wide", page_icon="📈")
@@ -19,8 +21,20 @@ if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Screenshot", width=400)
     
     if st.button("🔍 Scan Screenshot & Populate Stocks", type="primary"):
-        with st.spinner("Extracting stock numbers and 成交價金 from image..."):
+        with st.spinner("Cropping top header and scanning table rows..."):
             try:
+                # Load image and crop top 8% to remove top summary bar (-1,092,277)
+                img = Image.open(uploaded_file)
+                width, height = img.size
+                
+                # Crop top 8% of image height
+                cropped_img = img.crop((0, int(height * 0.08), width, height))
+                
+                # Save cropped image to memory buffer
+                img_byte_arr = io.BytesIO()
+                cropped_img.save(img_byte_arr, format='PNG')
+                cropped_bytes = img_byte_arr.getvalue()
+
                 payload = {
                     'apikey': 'helloworld',
                     'language': 'cht',
@@ -29,9 +43,7 @@ if uploaded_file is not None:
                     'OCREngine': '2'
                 }
                 
-                file_bytes = uploaded_file.getvalue()
-                file_type = uploaded_file.type.split('/')[-1] if uploaded_file.type else 'png'
-                files = {'file': (f'screenshot.{file_type}', file_bytes, uploaded_file.type)}
+                files = {'file': ('screenshot.png', cropped_bytes, 'image/png')}
                 
                 response = requests.post('https://api.ocr.space/parse/image', files=files, data=payload)
                 result = response.json()
@@ -40,22 +52,24 @@ if uploaded_file is not None:
                 
                 if "ParsedResults" in result and result["ParsedResults"]:
                     parsed_text = result['ParsedResults'][0].get('ParsedText', '')
+                    lines = parsed_text.split('\r\n')
                     
-                    # 1. Extract ALL currency amounts (e.g., 298,584 or 1,322,500)
-                    raw_amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', parsed_text)
-                    clean_amounts = [float(a.replace(',', '')) for a in raw_amounts if float(a.replace(',', '')) > 100]
-                    
-                    # 2. Extract ALL 4-digit stock tickers (e.g., 2376, 2449, 3231)
-                    raw_tickers = re.findall(r'\b[1-9]\d{3}\b', parsed_text)
-                    
-                    # 3. Match tickers and amounts in sequential order safely
-                    for i, amt in enumerate(clean_amounts):
-                        stock_num = raw_tickers[i] if i < len(raw_tickers) else f"Row {i+1}"
-                        extracted_list.append({"number": stock_num, "amount": amt})
+                    for line in lines:
+                        # Find currency-formatted numbers (e.g., 298,584 or 1,322,500)
+                        amounts = re.findall(r'\b\d{1,3}(?:,\d{3})+\b|\b\d{5,8}\b', line)
+                        # Find 4-digit stock tickers (e.g., 2376, 2449, 3231)
+                        tickers = re.findall(r'\b[1-9]\d{3}\b', line)
+                        
+                        if amounts:
+                            clean_amt = float(amounts[-1].replace(',', ''))
+                            stock_num = tickers[0] if tickers else ""
+                            # Only include valid trade row amounts
+                            if clean_amt > 100:
+                                extracted_list.append({"number": stock_num, "amount": clean_amt})
                     
                     st.session_state["scanned_items"] = extracted_list
                     if extracted_list:
-                        st.success(f"Successfully detected {len(extracted_list)} stocks with amounts!")
+                        st.success(f"Successfully aligned and extracted {len(extracted_list)} table rows!")
                     else:
                         st.warning("Could not automatically parse rows. Please enter values manually below.")
                 else:
@@ -75,13 +89,12 @@ if st.session_state["scanned_items"]:
     st.subheader("📋 Detected Stocks from Screenshot")
     
     for idx, item in enumerate(st.session_state["scanned_items"]):
-        stock_code = item['number']
+        stock_code = item['number'] if item['number'] else f"Row #{idx+1}"
         
-        # Displays "Include Stock 2376 — NT$ 298,584"
         use_stock = st.checkbox(
             label=f"Include Stock **{stock_code}** — NT$ {item['amount']:,.0f}", 
             value=True, 
-            key=f"chk_stock_num_v6_{idx}"
+            key=f"chk_stock_crop_{idx}"
         )
         
         if use_stock:
@@ -99,9 +112,9 @@ with st.expander("➕ Manually Input Stock Numbers & Amounts", expanded=not bool
         with target_col:
             s1, s2 = st.columns([1, 2])
             with s1:
-                st.text_input(f"Stock Code/Name #{i}", placeholder="e.g. 2376", key=f"m_num_v6_{i}")
+                st.text_input(f"Stock Number #{i}", placeholder="e.g. 2376", key=f"m_num_crop_{i}")
             with s2:
-                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_v6_{i}")
+                amt = st.number_input(f"Stock #{i} 成交價金 (NTD)", min_value=0.0, value=0.0, step=1000.0, key=f"m_amt_num_crop_{i}")
                 manual_total += amt
                 
     sold_total += manual_total
@@ -130,11 +143,11 @@ total_weight = 0.0
 for i in range(1, 7):
     b1, b2, b3 = st.columns([2, 2, 3])
     with b1:
-        b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_v6_{i}")
+        b_name = st.text_input(f"Target Stock Code/Name #{i}", placeholder="e.g. 2330", key=f"buy_num_crop_{i}")
     with b2:
-        b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_v6_{i}")
+        b_price = st.number_input(f"Target #{i} Set Price (NTD)", min_value=0.0, value=0.0, step=0.5, key=f"buy_price_num_crop_{i}")
     with b3:
-        b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_v6_{i}")
+        b_pct = st.number_input(f"Target #{i} Budget Allocation (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0, key=f"buy_pct_num_crop_{i}")
     
     if b_price > 0 and b_pct > 0:
         buy_rows.append({
